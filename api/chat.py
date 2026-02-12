@@ -1,4 +1,5 @@
 """Chat API — called by the widget embedded in your portal."""
+import re
 import uuid
 import logging
 from fastapi import APIRouter, Depends, Request
@@ -57,19 +58,29 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     state = UserState.from_dict(session.state)
 
     # Log user input
-    if req.message:
-        await crud.save_message(db, req.session_id, "user", req.message)
+    message_text = req.message
+    callback_data = req.callback_data
+    
+    # Sanitize inputs
+    if message_text:
+        message_text = message_text.strip()[:2000]  # Limit to 2000 chars
+        await crud.save_message(db, req.session_id, "user", message_text)
         await crud.log_event(db, "message", req.session_id)
-    if req.callback_data:
+    if callback_data:
+        # Validate callback_data against allowed pattern (alphanumeric, underscore, dash)
+        callback_data = callback_data.strip()
+        if not callback_data or len(callback_data) > 100 or not re.match(r'^[a-zA-Z0-9_-]+$', callback_data):
+            return ChatResponse(text="Invalid action.", buttons=[])
+        
         await crud.save_message(db, req.session_id, "user",
-            f"[clicked: {req.callback_data}]", callback=req.callback_data)
-        await crud.log_event(db, "button_click", req.session_id, detail=req.callback_data)
+            f"[clicked: {callback_data}]", callback=callback_data)
+        await crud.log_event(db, "button_click", req.session_id, detail=callback_data)
 
     # Route to correct flow
-    if req.callback_data:
-        response = route_callback(state, req.callback_data)
-    elif req.message:
-        response = route_text(state, req.message)
+    if callback_data:
+        response = route_callback(state, callback_data)
+    elif message_text:
+        response = await route_text(state, message_text, db=db, session_id=req.session_id)
     else:
         return ChatResponse(text="Send a message or click a button.", buttons=[])
 

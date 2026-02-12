@@ -55,20 +55,8 @@ app.mount("/widget", StaticFiles(directory="widget"), name="widget")
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serves just the chatbot widget — no demo content."""
-    return """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CPBFI Helpdesk</title>
-    <style>
-        body { margin: 0; min-height: 100vh; background: #fff; }
-    </style>
-</head>
-<body>
-    <script src="/widget/chatbot.js"></script>
-</body>
-</html>"""
+    with open("widget/index.html", "r") as f:
+        return f.read()
 
 
 if __name__ == "__main__":

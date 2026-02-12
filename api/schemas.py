@@ -1,6 +1,7 @@
 """Pydantic request/response models for the chat API."""
 from typing import Optional
-from pydantic import BaseModel
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict
 
 
 class ButtonSchema(BaseModel):
@@ -30,6 +31,8 @@ class ChatResponse(BaseModel):
 
 
 class EscalationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     session_id: str
     category: str
@@ -42,7 +45,7 @@ class EscalationOut(BaseModel):
     description: Optional[str] = None
     email_sent: bool = False
     status: str = "pending"
-    created_at: str
+    created_at: datetime
 
 
 class StatsResponse(BaseModel):
