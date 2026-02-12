@@ -1,4 +1,5 @@
 """Chat API — called by the widget embedded in your portal."""
+import re
 import uuid
 import logging
 from fastapi import APIRouter, Depends, Request
@@ -68,7 +69,7 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     if callback_data:
         # Validate callback_data against allowed pattern (alphanumeric, underscore, dash)
         callback_data = callback_data.strip()
-        if not callback_data or len(callback_data) > 100:
+        if not callback_data or len(callback_data) > 100 or not re.match(r'^[a-zA-Z0-9_-]+$', callback_data):
             return ChatResponse(text="Invalid action.", buttons=[])
         
         await crud.save_message(db, req.session_id, "user",
