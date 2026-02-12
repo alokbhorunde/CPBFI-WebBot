@@ -4,6 +4,7 @@ Every API call hits this: route_callback() for button clicks, route_text() for t
 Returns a plain dict {text, buttons} — no Telegram/web framework code.
 """
 import logging
+from sqlalchemy.ext.asyncio import AsyncSession
 from core.state import UserState
 from core.flows import menu, login, assessment, lms, navigation, ai_chat, other
 from core import escalation
@@ -85,8 +86,15 @@ def route_callback(state: UserState, callback: str) -> dict:
     return menu.get_menu()
 
 
-def route_text(state: UserState, text: str) -> dict:
-    """Route a text message. Returns {text: str, buttons: list[dict]}."""
+async def route_text(state: UserState, text: str, db: AsyncSession = None, session_id: str = None) -> dict:
+    """Route a text message. Returns {text: str, buttons: list[dict]}.
+    
+    Args:
+        state: UserState object
+        text: The user's text message
+        db: Database session (optional, required for AI chat mode with history)
+        session_id: Session ID (optional, required for AI chat mode with history)
+    """
 
     # Greeting = full reset
     if text.strip().lower() in GREETINGS or text.strip().lower().startswith("/start"):
@@ -103,7 +111,7 @@ def route_text(state: UserState, text: str) -> dict:
         portal = state.login_other_mode
         state.login_other_mode = None
         prompt = f"User is facing a login issue on {portal} portal. Their issue: {text}"
-        ai = ask_ai_free(prompt)
+        ai = await ask_ai_free(prompt)
         return _resp(ai, [
             {"text": "✅ Issue Resolved", "cb": "login_fixed"},
             {"text": "Still Need Help", "cb": f"login_still_not_working_{portal.lower()}"},
@@ -114,7 +122,7 @@ def route_text(state: UserState, text: str) -> dict:
         atype = state.assessment_other_mode.get("type", "Assessment")
         state.assessment_other_mode = {"active": False, "type": ""}
         prompt = f"User is facing a {atype} issue on Skillserv portal. Their issue: {text}"
-        ai = ask_ai_free(prompt)
+        ai = await ask_ai_free(prompt)
         back = "assessment_pcq" if atype == "PCQ" else "assessment_post"
         return _resp(ai, [
             {"text": "✅ Issue Resolved", "cb": "assessment_fixed"},
@@ -125,7 +133,7 @@ def route_text(state: UserState, text: str) -> dict:
     if state.lms_other_mode:
         state.lms_other_mode = False
         prompt = f"User is facing an LMS/Video issue on Skillserv portal. Their issue: {text}"
-        ai = ask_ai_free(prompt)
+        ai = await ask_ai_free(prompt)
         return _resp(ai, [
             {"text": "✅ Issue Resolved", "cb": "lms_fixed"},
             {"text": "Still Need Help", "cb": "lms_still_not_working"},
@@ -134,20 +142,34 @@ def route_text(state: UserState, text: str) -> dict:
 
     if state.other_issue_mode:
         state.other_issue_mode = False
-        ai = ask_ai_free(text)
+        ai = await ask_ai_free(text)
         return _resp(ai, [
             {"text": "✅ Issue Resolved", "cb": "main_menu"},
             {"text": "Still Need Help", "cb": "other"},
             {"text": "🏠 Main Menu", "cb": "main_menu"},
         ])
 
-    # AI Chat mode — multi-turn
+    # AI Chat mode — multi-turn with conversation history
     if state.ai_chat_mode:
-        ai = ask_ai_free(text, human_mode=True)
+        history = []
+        if db and session_id:
+            # Fetch recent messages from DB to build conversation history
+            from db import crud
+            messages = await crud.get_messages(db, session_id, limit=20)
+            for msg in messages:
+                # Skip button clicks and only include actual messages
+                if msg.role == "user" and msg.content and not msg.content.startswith("[clicked:"):
+                    history.append({"role": "user", "content": msg.content})
+                elif msg.role == "bot" and msg.content:
+                    history.append({"role": "assistant", "content": msg.content})
+            # Limit history to last 10 exchanges (20 messages)
+            history = history[-20:]
+        
+        ai = await ask_ai_free(text, human_mode=True, history=history)
         return _resp(ai, [{"text": "❌ Exit Chat", "cb": "exit_ai_chat"}])
 
     # Fallback — AI + menu
-    ai = ask_ai_free(text)
+    ai = await ask_ai_free(text)
     m = menu.get_menu()
     return _resp(ai, m["buttons"])
 

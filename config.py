@@ -38,6 +38,11 @@ class Settings:
             missing.append("GROQ_API_KEY")
         if missing:
             print(f"⚠️  Missing env vars: {', '.join(missing)} — some features will be disabled.")
+        
+        # Warn about insecure admin key
+        if not self.ADMIN_KEY or self.ADMIN_KEY == "changeme":
+            print("⚠️  WARNING: ADMIN_KEY is not set or using default 'changeme' — admin endpoints are INSECURE!")
+            print("   Please set a secure ADMIN_KEY in your .env file.")
 
 
 settings = Settings()
