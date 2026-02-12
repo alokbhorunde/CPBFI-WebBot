@@ -90,9 +90,10 @@ async def save_escalation(db: AsyncSession, session_id: str, category: str,
 
 async def get_escalations(db: AsyncSession, status: str = None, limit: int = 50):
     """Get escalation tickets, optionally filtered by status."""
-    query = select(Escalation).order_by(Escalation.created_at.desc()).limit(limit)
+    query = select(Escalation).order_by(Escalation.created_at.desc())
     if status:
         query = query.where(Escalation.status == status)
+    query = query.limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
